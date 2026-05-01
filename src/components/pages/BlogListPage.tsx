@@ -4,7 +4,8 @@ import { apiFetch } from '../../lib/api';
 import type { Post } from '../../lib/types';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Clock, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Clock, ChevronRight, LayoutGrid } from 'lucide-react';
+import { slugifyCategory } from '../../lib/categorySlug';
 
 function formatDate(d?: string | null) {
   return d ? new Date(d).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' }) : '-';
@@ -32,9 +33,12 @@ export function BlogListPage() {
   return (
     <div className="min-h-screen bg-background pb-20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8 pt-8 md:pt-12">
-        <nav className="mb-6">
+        <nav className="mb-6 flex items-center justify-between gap-3">
           <Link href="/" className="inline-flex items-center text-foreground/70 font-semibold hover:text-foreground transition-colors text-sm uppercase tracking-widest">
             <ArrowLeft className="w-4 h-4 mr-2" /> Beranda
+          </Link>
+          <Link href="/berita/kategori" className="inline-flex items-center text-foreground/70 font-semibold hover:text-foreground transition-colors text-sm uppercase tracking-widest">
+            <LayoutGrid className="w-4 h-4 mr-2" /> Kategori
           </Link>
         </nav>
 
