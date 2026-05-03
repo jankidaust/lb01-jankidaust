@@ -56,7 +56,7 @@ export function FloatingSettingsFab({
             {/* Dark/Light toggle */}
             <button
               onClick={toggleTheme}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-secondary transition-colors text-sm text-foreground"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-secondary transition-colors text-sm text-foreground w-full text-left"
             >
               {themeMode === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               {themeMode === "dark" ? "Light Mode" : "Dark Mode"}
@@ -65,9 +65,9 @@ export function FloatingSettingsFab({
             {/* Preset cycle */}
             <button
               onClick={cyclePreset}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-secondary transition-colors text-sm text-foreground"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-secondary transition-colors text-sm text-foreground w-full text-left"
             >
-              <Palette className="w-4 h-4" />
+              <Palette className="w-4 h-4 shrink-0" />
               <span className="truncate">{activePresetName}</span>
             </button>
 
