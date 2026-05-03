@@ -46,9 +46,9 @@ function AppContent({ children }: { children: React.ReactNode }) {
     if (saved && PRESETS[saved]) {
       setPresetOverride(saved);
     } else {
-      // Phase 1: Default to fresh_majestic_yellow on first visit
-      setPresetOverride("fresh_majestic_yellow");
-      if (typeof window !== "undefined") localStorage.setItem("theme-preset", "fresh_majestic_yellow");
+      // Default to fresh_majestic (Green-Yellow) on first visit
+      setPresetOverride("fresh_majestic");
+      if (typeof window !== "undefined") localStorage.setItem("theme-preset", "fresh_majestic");
     }
   }, []);
 
@@ -177,11 +177,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
                 Leaderboard
               </button>
 
-              {!isAdmin && (
-                <button onClick={() => router.push("/login")} className="px-4 py-2 rounded-xl text-sm font-semibold text-primary hover:bg-primary/10 border border-primary/20 transition-all">
-                  Login
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -200,21 +195,21 @@ function AppContent({ children }: { children: React.ReactNode }) {
       <FloatingSettingsFab
         themeMode={themeMode}
         toggleTheme={toggleTheme}
-        activePresetId={presetOverride || appSettings.activePresetId || "fresh_majestic_yellow"}
+        activePresetId={presetOverride || appSettings.activePresetId || "fresh_majestic"}
         cyclePreset={cyclePreset}
         activePresetName={activePresetName}
         isAdmin={isAdmin}
       />
 
-      {/* Scroll to top – bottom-right, above FAB */}
-      <div className="fixed bottom-32 md:bottom-20 right-4 z-50">
+      {/* Scroll to top – bottom-right, above FAB (with breathing room) */}
+      <div className="fixed bottom-48 md:bottom-24 right-4 z-50">
         <ScrollToTop />
       </div>
 
       <PwaDownloadPrompt />
 
       {/* Mobile Bottom Nav – Leaderboard | Logo (absolute center) | Berita */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:hidden z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:hidden z-50">
         {/* Logo – absolute center of screen */}
         <div className="absolute left-1/2 -translate-x-1/2 -top-8 z-10">
           {appSettings?.logoUrl ? (
