@@ -28,13 +28,16 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuthRole } from '@/hooks/useAuthRole';
 import { cn } from '@/lib/utils';
+import { ChevronDown } from 'lucide-react';
 import type { StudentAchievement } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
-// Centralized completion-audit dialog (formerly src/components/goals/CompletionAuditDialog.tsx)
-// Inlined here per DRY: it is only consumed by the student admin surface.
+// Inline collapsible audit card — replaces the legacy CompletionAuditPanel.
+// Each goal renders as a collapsible row; expanding it reveals editable audit
+// fields (date picker, marker select, note) directly inside the card.
 // ---------------------------------------------------------------------------
 export interface CompletionAuditPayload {
   completedAt: string;
@@ -43,167 +46,224 @@ export interface CompletionAuditPayload {
   markedByAdminName: string | null;
 }
 
-interface CompletionAuditPanelProps {
-  isOpen: boolean;
-  onClose: () => void;
-  studentId: string;
-  selectedGoalIds: string[];
-  existingData?: Partial<StudentAchievement> | null;
-  onSubmit: (payload: CompletionAuditPayload) => Promise<void> | void;
+interface AdminOption { id: string; name: string; }
+
+interface GoalAuditCardProps {
+  goal: any;
+  assigned: boolean;
+  completed: boolean;
+  assignedGoal: AssignedGoal | undefined;
+  admins: AdminOption[];
+  currentAdmin: AdminOption;
+  onToggleAssign: () => void;
+  onApplyCompletion: (payload: CompletionAuditPayload) => void;
+  onUnmark: () => void;
 }
 
-/**
- * Inline audit panel — rendered as an overlay INSIDE <StudentAdminModal>.
- * Deliberately NOT a Dialog: avoids the nested-modal anti-pattern by sliding
- * over the modal's own content area instead of stacking another portal on top.
- */
-function CompletionAuditPanel({
-  isOpen,
-  onClose,
-  studentId,
-  selectedGoalIds,
-  existingData = null,
-  onSubmit,
-}: CompletionAuditPanelProps) {
-  const { user } = useAuthRole();
-  const isBulk = selectedGoalIds.length > 1;
-  const isEditing = Boolean(existingData?.id);
+function GoalAuditCard({
+  goal,
+  assigned,
+  completed,
+  assignedGoal,
+  admins,
+  currentAdmin,
+  onToggleAssign,
+  onApplyCompletion,
+  onUnmark,
+}: GoalAuditCardProps) {
+  const [open, setOpen] = useState(false);
 
   const initialDate = useMemo(() => {
-    if (existingData?.completedAt) {
-      const d = new Date(existingData.completedAt);
+    if (assignedGoal?.completedAt) {
+      const d = new Date(assignedGoal.completedAt);
       if (!isNaN(d.getTime())) return d;
     }
     return new Date();
-  }, [existingData]);
+  }, [assignedGoal?.completedAt]);
 
   const [date, setDate] = useState<Date>(initialDate);
-  const [note, setNote] = useState<string>(existingData?.completionNote ?? '');
-  const [submitting, setSubmitting] = useState(false);
+  const [note, setNote] = useState<string>(assignedGoal?.completionNote ?? '');
+  const [markerId, setMarkerId] = useState<string>(
+    assignedGoal?.markedByAdminId ?? currentAdmin.id
+  );
 
+  // Re-sync local fields when the underlying assignment changes (e.g. bulk ops)
   useEffect(() => {
-    if (isOpen) {
-      setDate(initialDate);
-      setNote(existingData?.completionNote ?? '');
-    }
-  }, [isOpen, initialDate, existingData]);
+    setDate(initialDate);
+    setNote(assignedGoal?.completionNote ?? '');
+    setMarkerId(assignedGoal?.markedByAdminId ?? currentAdmin.id);
+  }, [initialDate, assignedGoal?.completionNote, assignedGoal?.markedByAdminId, currentAdmin.id]);
 
-  const adminName = existingData?.markedByAdminName ?? user?.full_name ?? user?.email ?? 'Admin';
-  const adminId = existingData?.markedByAdminId ?? user?.id ?? null;
-
-  const handleSubmit = async () => {
-    setSubmitting(true);
-    try {
-      await onSubmit({
-        completedAt: date.toISOString(),
-        completionNote: note.trim() ? note.trim() : null,
-        markedByAdminId: adminId,
-        markedByAdminName: adminName,
+  const adminOptions = useMemo(() => {
+    const map = new Map<string, AdminOption>();
+    admins.forEach(a => map.set(a.id, a));
+    map.set(currentAdmin.id, currentAdmin);
+    if (assignedGoal?.markedByAdminId && assignedGoal?.markedByAdminName) {
+      map.set(assignedGoal.markedByAdminId, {
+        id: assignedGoal.markedByAdminId,
+        name: assignedGoal.markedByAdminName,
       });
-      onClose();
-    } finally {
-      setSubmitting(false);
     }
+    return Array.from(map.values());
+  }, [admins, currentAdmin, assignedGoal?.markedByAdminId, assignedGoal?.markedByAdminName]);
+
+  const handleApply = () => {
+    const marker = adminOptions.find(a => a.id === markerId) ?? currentAdmin;
+    onApplyCompletion({
+      completedAt: date.toISOString(),
+      completionNote: note.trim() ? note.trim() : null,
+      markedByAdminId: marker.id,
+      markedByAdminName: marker.name,
+    });
+    setOpen(false);
   };
 
-  const title = isEditing
-    ? 'Perbarui Capaian'
-    : isBulk
-    ? `Tandai ${selectedGoalIds.length} Capaian`
-    : 'Tandai Capaian';
+  const containerClass = assigned
+    ? completed
+      ? 'border-[var(--accent)] bg-[var(--accent)]/10'
+      : 'border-primary bg-primary/10'
+    : 'border-transparent bg-card hover:border-border shadow-soft';
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          key="audit-overlay"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="absolute inset-0 z-20 bg-background/70 backdrop-blur-sm flex items-center justify-center p-6"
-          onClick={onClose}
+    <div className={`rounded-xl border transition-all ${containerClass}`}>
+      <div className="p-4 flex justify-between items-start gap-4">
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="flex-1 text-left"
+          aria-expanded={open}
         >
-          <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ duration: 0.15 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-card border border-border rounded-2xl shadow-soft p-6 space-y-4"
+          <div className="flex items-center gap-2">
+            <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+            <div className="font-bold text-sm text-foreground">{goal.title}</div>
+            {completed && (
+              <Badge className="bg-[var(--accent)] text-[var(--accent-foreground)] border-0 rounded-md text-[10px] px-1.5 py-0.5 ml-1">
+                Selesai
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1 pl-6">
+            <span className="text-[10px] font-black text-primary uppercase tracking-widest">
+              {goal.points !== undefined ? goal.points : (goal as any).pointValue || 0} pts
+            </span>
+            <span className="text-[10px] text-muted-foreground">•</span>
+            <span className="text-[10px] font-medium text-muted-foreground">{goal.categoryName || '—'}</span>
+            {completed && assignedGoal?.completedAt && (
+              <>
+                <span className="text-[10px] text-muted-foreground">•</span>
+                <span className="text-[10px] text-muted-foreground">{format(new Date(assignedGoal.completedAt), 'PPP')}</span>
+              </>
+            )}
+          </div>
+        </button>
+
+        <div className="flex gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onToggleAssign}
+            className={`p-2 rounded-xl transition-all ${assigned ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
+            title={assigned ? 'Hapus tugas' : 'Tugaskan'}
           >
-            <div className="space-y-1.5">
-              <h3 className="flex items-center gap-2 text-base font-black text-foreground">
-                <CheckCircle2 className="h-5 w-5 text-primary" />
-                {title}
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Audit log untuk siswa <span className="font-mono">{studentId.slice(0, 8)}</span>.
-                Setiap perubahan tercatat untuk verifikasi.
-              </p>
-            </div>
+            {assigned ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+          </button>
+        </div>
+      </div>
 
-            <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="completion-date">Tanggal Capaian</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  id="completion-date"
-                  variant="outline"
-                  className={cn('w-full justify-start text-left font-normal', !date && 'text-muted-foreground')}
-                  disabled={submitting}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date ? format(date, 'PPP') : 'Pilih tanggal'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={(d) => d && setDate(d)}
-                  disabled={(d) => d > new Date()}
-                  initialFocus
-                  className={cn('p-3 pointer-events-auto')}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="audit"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-4 pt-2 border-t border-border/60 space-y-4">
+              {!assigned ? (
+                <div className="text-xs text-muted-foreground italic">
+                  Tugaskan terlebih dahulu untuk membuka audit log capaian.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        Tanggal Capaian
+                      </Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn('w-full justify-start text-left font-normal h-10', !date && 'text-muted-foreground')}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {date ? format(date, 'PPP') : 'Pilih tanggal'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={date}
+                            onSelect={(d) => d && setDate(d)}
+                            disabled={(d) => d > new Date()}
+                            initialFocus
+                            className={cn('p-3 pointer-events-auto')}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="marked-by">Ditandai Oleh</Label>
-            <Input id="marked-by" value={adminName} disabled readOnly />
-          </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        Ditandai Oleh
+                      </Label>
+                      <Select value={markerId} onValueChange={setMarkerId}>
+                        <SelectTrigger className="h-10">
+                          <SelectValue placeholder="Pilih admin" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {adminOptions.map(a => (
+                            <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="completion-note">Catatan (opsional)</Label>
-            <Textarea
-              id="completion-note"
-              placeholder="Tambahkan konteks, bukti, atau catatan verifikasi…"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              disabled={submitting}
-              rows={3}
-            />
-          </div>
-            </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                      Catatan (opsional)
+                    </Label>
+                    <Textarea
+                      placeholder="Tambahkan konteks, bukti, atau catatan verifikasi…"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={onClose} disabled={submitting}>Batal</Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="bg-[hsl(45_93%_56%)] text-[hsl(150_60%_12%)] hover:bg-[hsl(45_93%_50%)] font-semibold"
-              >
-                {submitting ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Menyimpan…</>
-                ) : isEditing ? 'Perbarui Capaian' : 'Simpan Capaian'}
-              </Button>
+                  <div className="flex flex-wrap justify-end gap-2 pt-2">
+                    {completed && (
+                      <Button variant="ghost" onClick={onUnmark} className="text-destructive hover:text-destructive">
+                        <X className="w-4 h-4 mr-1" /> Batalkan Selesai
+                      </Button>
+                    )}
+                    <Button
+                      onClick={handleApply}
+                      className="bg-[hsl(45_93%_56%)] text-[hsl(150_60%_12%)] hover:bg-[hsl(45_93%_50%)] font-semibold"
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-1" />
+                      {completed ? 'Perbarui Audit Log' : 'Tandai Selesai'}
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -491,11 +551,25 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
   const isAssigned = (goalId: string) => formData.assignedGoals.some(ag => ag.goalId === goalId);
   const isCompleted = (goalId: string) => formData.assignedGoals.find(ag => ag.goalId === goalId)?.completed || false;
 
-  // Audit dialog state — single or bulk
-  const [auditState, setAuditState] = useState<{
-    goalIds: string[];
-    existing: any | null;
-  } | null>(null);
+  // Fetch admin list for the marker dropdown (graceful failure → empty list).
+  const { user } = useAuthRole();
+  const [admins, setAdmins] = useState<AdminOption[]>([]);
+  useEffect(() => {
+    let active = true;
+    apiFetch('/api/admin_users')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (!active || !data) return;
+        const list = Array.isArray(data) ? data : (data.users || data.admins || []);
+        setAdmins(list.map((a: any) => ({ id: a.id, name: a.full_name || a.email || 'Admin' })));
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  const currentAdmin: AdminOption = useMemo(() => ({
+    id: user?.id || 'self',
+    name: user?.full_name || user?.email || 'Admin',
+  }), [user]);
 
   const toggleAssignment = (goalId: string) => {
     setFormData(prev => {
@@ -507,27 +581,6 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
     });
   };
 
-  const toggleCompletion = (goalId: string) => {
-    if (!isAssigned(goalId)) return;
-    const ag = formData.assignedGoals.find(a => a.goalId === goalId);
-    if (ag?.completed) {
-      // Open dialog in EDIT mode for an already-completed goal
-      setAuditState({
-        goalIds: [goalId],
-        existing: {
-          id: goalId,
-          completedAt: ag.completedAt,
-          completionNote: (ag as any).completionNote ?? null,
-          markedByAdminId: (ag as any).markedByAdminId ?? null,
-          markedByAdminName: (ag as any).markedByAdminName ?? null,
-        },
-      });
-    } else {
-      // First-time completion — open audit dialog
-      setAuditState({ goalIds: [goalId], existing: null });
-    }
-  };
-
   const unmarkCompletion = (goalId: string) => {
     setFormData(prev => ({
       ...prev,
@@ -537,30 +590,27 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
     }));
   };
 
-  const handleAuditSubmit = async (payload: CompletionAuditPayload) => {
-    if (!auditState) return;
-    const ids = new Set(auditState.goalIds);
+  const applyCompletionToGoal = (goalId: string, payload: CompletionAuditPayload) => {
     setFormData(prev => {
-      const existingIds = new Set(prev.assignedGoals.map(ag => ag.goalId));
-      const merged = prev.assignedGoals.map(ag => ids.has(ag.goalId) ? {
-        ...ag,
-        completed: true,
-        completedAt: payload.completedAt,
-        completionNote: payload.completionNote,
-        markedByAdminId: payload.markedByAdminId,
-        markedByAdminName: payload.markedByAdminName,
-      } : ag);
-      const additions = Array.from(ids)
-        .filter(id => !existingIds.has(id))
-        .map(id => ({
-          goalId: id,
-          completed: true,
-          completedAt: payload.completedAt,
-          completionNote: payload.completionNote,
-          markedByAdminId: payload.markedByAdminId,
-          markedByAdminName: payload.markedByAdminName,
-        }));
-      return { ...prev, assignedGoals: [...merged, ...additions] };
+      const exists = prev.assignedGoals.some(ag => ag.goalId === goalId);
+      const next = exists
+        ? prev.assignedGoals.map(ag => ag.goalId === goalId ? {
+            ...ag,
+            completed: true,
+            completedAt: payload.completedAt,
+            completionNote: payload.completionNote,
+            markedByAdminId: payload.markedByAdminId,
+            markedByAdminName: payload.markedByAdminName,
+          } : ag)
+        : [...prev.assignedGoals, {
+            goalId,
+            completed: true,
+            completedAt: payload.completedAt,
+            completionNote: payload.completionNote,
+            markedByAdminId: payload.markedByAdminId,
+            markedByAdminName: payload.markedByAdminName,
+          }];
+      return { ...prev, assignedGoals: next };
     });
   };
 
@@ -745,56 +795,26 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
               {displayedMasterGoals.map((mg: any, index: number) => {
                 const assigned = isAssigned(mg.id);
                 const completed = isCompleted(mg.id);
-                
+                const ag = formData.assignedGoals.find(a => a.goalId === mg.id);
                 return (
-                  <div key={`${mg.id}-${index}`} className={`p-4 rounded-xl border transition-all ${
-                    assigned 
-                      ? completed ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-primary bg-primary/10' 
-                      : 'border-transparent bg-card hover:border-border shadow-soft'
-                  }`}>
-                    <div className="flex justify-between items-start gap-4">
-                      <div className="flex-1">
-                        <div className="font-bold text-sm text-foreground">{mg.title}</div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] font-black text-primary uppercase tracking-widest">{mg.points !== undefined ? mg.points : (mg as any).pointValue || 0} pts</span>
-                          <span className="text-[10px] text-muted-foreground">•</span>
-                          <span className="text-[10px] font-medium text-muted-foreground">{mg.categoryName || '—'}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="flex gap-2 shrink-0">
-                        <button 
-                          onClick={() => toggleAssignment(mg.id)}
-                          className={`p-2 rounded-xl transition-all ${assigned ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
-                        >
-                          {assigned ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
-                        </button>
-                        <button 
-                          onClick={() => toggleCompletion(mg.id)}
-                          disabled={!assigned}
-                          className={`p-2 rounded-xl transition-all ${!assigned ? 'opacity-20' : completed ? 'bg-[var(--accent)] text-[var(--accent-foreground)]' : 'bg-secondary text-muted-foreground'}`}
-                          title={completed ? 'Edit audit log' : 'Tandai selesai'}
-                        >
-                          <CheckCircle2 className="w-5 h-5" />
-                        </button>
-                        {completed && (
-                          <button
-                            onClick={() => unmarkCompletion(mg.id)}
-                            className="p-2 rounded-xl bg-secondary text-muted-foreground hover:text-destructive transition-all"
-                            title="Batalkan selesai"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <GoalAuditCard
+                    key={`${mg.id}-${index}`}
+                    goal={mg}
+                    assigned={assigned}
+                    completed={completed}
+                    assignedGoal={ag}
+                    admins={admins}
+                    currentAdmin={currentAdmin}
+                    onToggleAssign={() => toggleAssignment(mg.id)}
+                    onApplyCompletion={(payload) => applyCompletionToGoal(mg.id, payload)}
+                    onUnmark={() => unmarkCompletion(mg.id)}
+                  />
                 );
               })}
             </div>
           </div>
         </div>
-        
+
         <div className="p-6 border-t border-border bg-secondary/30 flex justify-end gap-4">
           <Button variant="ghost" onClick={onClose} disabled={busy} className="rounded-xl font-bold h-12">Batal</Button>
           <Button onClick={handleConfirmSave} disabled={busy} className="rounded-xl font-bold h-12 shadow-primary-glow min-w-[200px]">
@@ -802,14 +822,6 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
           </Button>
         </div>
       </motion.div>
-      <CompletionAuditPanel
-        isOpen={!!auditState}
-        onClose={() => setAuditState(null)}
-        studentId={formData.id || 'new'}
-        selectedGoalIds={auditState?.goalIds || []}
-        existingData={auditState?.existing || null}
-        onSubmit={handleAuditSubmit}
-      />
     </div>
   );
 }
