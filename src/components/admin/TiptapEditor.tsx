@@ -5,6 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
+import Typography from '@tiptap/extension-typography';
 import { Bold, Italic, Strikethrough, Heading1, Heading2, List, ListOrdered, Quote, Undo, Redo, Link as LinkIcon, ImageIcon, X, Upload, ChevronDown, LayoutGrid, Table as TableIcon, GalleryHorizontal, MessageSquareQuote } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useEffect, useState } from 'react';
@@ -33,9 +34,10 @@ export function TiptapEditor({ content, onChange }: { content: string, onChange:
     immediatelyRender: false,
     extensions: [
       StarterKit,
+      Typography,
       CenteredImage,
       Link.configure({ openOnClick: false }),
-      Placeholder.configure({ placeholder: 'Tulis ceritamu di sini...' }),
+      Placeholder.configure({ placeholder: 'Tulis ceritamu di sini... (gunakan # untuk Heading 1, ## Heading 2, > kutipan, - list, dst)' }),
       AccordionBlock,
       TabsBlock,
       SimpleTableBlock,
