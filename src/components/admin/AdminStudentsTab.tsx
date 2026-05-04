@@ -551,11 +551,25 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
   const isAssigned = (goalId: string) => formData.assignedGoals.some(ag => ag.goalId === goalId);
   const isCompleted = (goalId: string) => formData.assignedGoals.find(ag => ag.goalId === goalId)?.completed || false;
 
-  // Audit dialog state — single or bulk
-  const [auditState, setAuditState] = useState<{
-    goalIds: string[];
-    existing: any | null;
-  } | null>(null);
+  // Fetch admin list for the marker dropdown (graceful failure → empty list).
+  const { user } = useAuthRole();
+  const [admins, setAdmins] = useState<AdminOption[]>([]);
+  useEffect(() => {
+    let active = true;
+    apiFetch('/api/admin_users')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (!active || !data) return;
+        const list = Array.isArray(data) ? data : (data.users || data.admins || []);
+        setAdmins(list.map((a: any) => ({ id: a.id, name: a.full_name || a.email || 'Admin' })));
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  const currentAdmin: AdminOption = useMemo(() => ({
+    id: user?.id || 'self',
+    name: user?.full_name || user?.email || 'Admin',
+  }), [user]);
 
   const toggleAssignment = (goalId: string) => {
     setFormData(prev => {
@@ -567,27 +581,6 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
     });
   };
 
-  const toggleCompletion = (goalId: string) => {
-    if (!isAssigned(goalId)) return;
-    const ag = formData.assignedGoals.find(a => a.goalId === goalId);
-    if (ag?.completed) {
-      // Open dialog in EDIT mode for an already-completed goal
-      setAuditState({
-        goalIds: [goalId],
-        existing: {
-          id: goalId,
-          completedAt: ag.completedAt,
-          completionNote: (ag as any).completionNote ?? null,
-          markedByAdminId: (ag as any).markedByAdminId ?? null,
-          markedByAdminName: (ag as any).markedByAdminName ?? null,
-        },
-      });
-    } else {
-      // First-time completion — open audit dialog
-      setAuditState({ goalIds: [goalId], existing: null });
-    }
-  };
-
   const unmarkCompletion = (goalId: string) => {
     setFormData(prev => ({
       ...prev,
@@ -597,30 +590,27 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
     }));
   };
 
-  const handleAuditSubmit = async (payload: CompletionAuditPayload) => {
-    if (!auditState) return;
-    const ids = new Set(auditState.goalIds);
+  const applyCompletionToGoal = (goalId: string, payload: CompletionAuditPayload) => {
     setFormData(prev => {
-      const existingIds = new Set(prev.assignedGoals.map(ag => ag.goalId));
-      const merged = prev.assignedGoals.map(ag => ids.has(ag.goalId) ? {
-        ...ag,
-        completed: true,
-        completedAt: payload.completedAt,
-        completionNote: payload.completionNote,
-        markedByAdminId: payload.markedByAdminId,
-        markedByAdminName: payload.markedByAdminName,
-      } : ag);
-      const additions = Array.from(ids)
-        .filter(id => !existingIds.has(id))
-        .map(id => ({
-          goalId: id,
-          completed: true,
-          completedAt: payload.completedAt,
-          completionNote: payload.completionNote,
-          markedByAdminId: payload.markedByAdminId,
-          markedByAdminName: payload.markedByAdminName,
-        }));
-      return { ...prev, assignedGoals: [...merged, ...additions] };
+      const exists = prev.assignedGoals.some(ag => ag.goalId === goalId);
+      const next = exists
+        ? prev.assignedGoals.map(ag => ag.goalId === goalId ? {
+            ...ag,
+            completed: true,
+            completedAt: payload.completedAt,
+            completionNote: payload.completionNote,
+            markedByAdminId: payload.markedByAdminId,
+            markedByAdminName: payload.markedByAdminName,
+          } : ag)
+        : [...prev.assignedGoals, {
+            goalId,
+            completed: true,
+            completedAt: payload.completedAt,
+            completionNote: payload.completionNote,
+            markedByAdminId: payload.markedByAdminId,
+            markedByAdminName: payload.markedByAdminName,
+          }];
+      return { ...prev, assignedGoals: next };
     });
   };
 
