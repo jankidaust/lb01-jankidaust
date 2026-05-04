@@ -795,56 +795,26 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
               {displayedMasterGoals.map((mg: any, index: number) => {
                 const assigned = isAssigned(mg.id);
                 const completed = isCompleted(mg.id);
-                
+                const ag = formData.assignedGoals.find(a => a.goalId === mg.id);
                 return (
-                  <div key={`${mg.id}-${index}`} className={`p-4 rounded-xl border transition-all ${
-                    assigned 
-                      ? completed ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-primary bg-primary/10' 
-                      : 'border-transparent bg-card hover:border-border shadow-soft'
-                  }`}>
-                    <div className="flex justify-between items-start gap-4">
-                      <div className="flex-1">
-                        <div className="font-bold text-sm text-foreground">{mg.title}</div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] font-black text-primary uppercase tracking-widest">{mg.points !== undefined ? mg.points : (mg as any).pointValue || 0} pts</span>
-                          <span className="text-[10px] text-muted-foreground">•</span>
-                          <span className="text-[10px] font-medium text-muted-foreground">{mg.categoryName || '—'}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="flex gap-2 shrink-0">
-                        <button 
-                          onClick={() => toggleAssignment(mg.id)}
-                          className={`p-2 rounded-xl transition-all ${assigned ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
-                        >
-                          {assigned ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
-                        </button>
-                        <button 
-                          onClick={() => toggleCompletion(mg.id)}
-                          disabled={!assigned}
-                          className={`p-2 rounded-xl transition-all ${!assigned ? 'opacity-20' : completed ? 'bg-[var(--accent)] text-[var(--accent-foreground)]' : 'bg-secondary text-muted-foreground'}`}
-                          title={completed ? 'Edit audit log' : 'Tandai selesai'}
-                        >
-                          <CheckCircle2 className="w-5 h-5" />
-                        </button>
-                        {completed && (
-                          <button
-                            onClick={() => unmarkCompletion(mg.id)}
-                            className="p-2 rounded-xl bg-secondary text-muted-foreground hover:text-destructive transition-all"
-                            title="Batalkan selesai"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <GoalAuditCard
+                    key={`${mg.id}-${index}`}
+                    goal={mg}
+                    assigned={assigned}
+                    completed={completed}
+                    assignedGoal={ag}
+                    admins={admins}
+                    currentAdmin={currentAdmin}
+                    onToggleAssign={() => toggleAssignment(mg.id)}
+                    onApplyCompletion={(payload) => applyCompletionToGoal(mg.id, payload)}
+                    onUnmark={() => unmarkCompletion(mg.id)}
+                  />
                 );
               })}
             </div>
           </div>
         </div>
-        
+
         <div className="p-6 border-t border-border bg-secondary/30 flex justify-end gap-4">
           <Button variant="ghost" onClick={onClose} disabled={busy} className="rounded-xl font-bold h-12">Batal</Button>
           <Button onClick={handleConfirmSave} disabled={busy} className="rounded-xl font-bold h-12 shadow-primary-glow min-w-[200px]">
