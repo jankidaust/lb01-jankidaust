@@ -209,11 +209,11 @@ function AppContent({ children }: { children: React.ReactNode }) {
       <PwaDownloadPrompt />
 
       {/* Mobile Bottom Nav – Leaderboard | Logo (absolute center) | Berita */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:hidden z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border pt-5 pb-[max(1rem,env(safe-area-inset-bottom))] md:hidden z-50">
         {/* Logo – absolute center of screen */}
-        <div className="absolute left-1/2 -translate-x-1/2 -top-8 z-10">
+        <div className="absolute left-1/2 -translate-x-1/2 -top-6 z-10">
           {appSettings?.logoUrl ? (
-            <div className="w-16 h-16 rounded-full border-4 border-border bg-card shadow-soft flex items-center justify-center overflow-hidden cursor-pointer active:scale-95 transition-transform" onClick={() => router.push("/")}>
+            <div className="w-20 h-20 rounded-full border border-border bg-card shadow-soft flex items-center justify-center overflow-hidden cursor-pointer active:scale-95 transition-transform" onClick={() => router.push("/")}>
               <ImageFallback src={appSettings.logoUrl} alt="Logo" variant="logo" className="w-full h-full object-cover" wrapperClassName="w-full h-full" />
             </div>
           ) : (

@@ -1,5 +1,6 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
-import { Image as ImageIcon, Save, Trash2, Edit2, Info, Loader2, Link as LinkIcon, Download, X, Search, Filter, ArrowUpAZ, ArrowDownAZ, TrendingUp, Plus, CheckSquare, Square, CheckCircle2, ArrowLeft, ZoomOut, ZoomIn, MoreHorizontal } from 'lucide-react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { format } from 'date-fns';
+import { Image as ImageIcon, Save, Trash2, Edit2, Info, Loader2, Link as LinkIcon, Download, X, Search, Filter, ArrowUpAZ, ArrowDownAZ, TrendingUp, Plus, CheckSquare, Square, CheckCircle2, ArrowLeft, ZoomOut, ZoomIn, MoreHorizontal, CalendarIcon } from 'lucide-react';
 import { ImageUploader } from '../ui/ImageUploader';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../../lib/api';
@@ -21,6 +22,190 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SimpleMenu } from '../ui/SimpleMenu';
 import { ArrowUpDown } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useAuthRole } from '@/hooks/useAuthRole';
+import { cn } from '@/lib/utils';
+import type { StudentAchievement } from '@/lib/types';
+
+// ---------------------------------------------------------------------------
+// Centralized completion-audit dialog (formerly src/components/goals/CompletionAuditDialog.tsx)
+// Inlined here per DRY: it is only consumed by the student admin surface.
+// ---------------------------------------------------------------------------
+export interface CompletionAuditPayload {
+  completedAt: string;
+  completionNote: string | null;
+  markedByAdminId: string | null;
+  markedByAdminName: string | null;
+}
+
+interface CompletionAuditPanelProps {
+  isOpen: boolean;
+  onClose: () => void;
+  studentId: string;
+  selectedGoalIds: string[];
+  existingData?: Partial<StudentAchievement> | null;
+  onSubmit: (payload: CompletionAuditPayload) => Promise<void> | void;
+}
+
+/**
+ * Inline audit panel — rendered as an overlay INSIDE <StudentAdminModal>.
+ * Deliberately NOT a Dialog: avoids the nested-modal anti-pattern by sliding
+ * over the modal's own content area instead of stacking another portal on top.
+ */
+function CompletionAuditPanel({
+  isOpen,
+  onClose,
+  studentId,
+  selectedGoalIds,
+  existingData = null,
+  onSubmit,
+}: CompletionAuditPanelProps) {
+  const { user } = useAuthRole();
+  const isBulk = selectedGoalIds.length > 1;
+  const isEditing = Boolean(existingData?.id);
+
+  const initialDate = useMemo(() => {
+    if (existingData?.completedAt) {
+      const d = new Date(existingData.completedAt);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  }, [existingData]);
+
+  const [date, setDate] = useState<Date>(initialDate);
+  const [note, setNote] = useState<string>(existingData?.completionNote ?? '');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setDate(initialDate);
+      setNote(existingData?.completionNote ?? '');
+    }
+  }, [isOpen, initialDate, existingData]);
+
+  const adminName = existingData?.markedByAdminName ?? user?.full_name ?? user?.email ?? 'Admin';
+  const adminId = existingData?.markedByAdminId ?? user?.id ?? null;
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        completedAt: date.toISOString(),
+        completionNote: note.trim() ? note.trim() : null,
+        markedByAdminId: adminId,
+        markedByAdminName: adminName,
+      });
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const title = isEditing
+    ? 'Perbarui Capaian'
+    : isBulk
+    ? `Tandai ${selectedGoalIds.length} Capaian`
+    : 'Tandai Capaian';
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="audit-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="absolute inset-0 z-20 bg-background/70 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-card border border-border rounded-2xl shadow-soft p-6 space-y-4"
+          >
+            <div className="space-y-1.5">
+              <h3 className="flex items-center gap-2 text-base font-black text-foreground">
+                <CheckCircle2 className="h-5 w-5 text-primary" />
+                {title}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Audit log untuk siswa <span className="font-mono">{studentId.slice(0, 8)}</span>.
+                Setiap perubahan tercatat untuk verifikasi.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="completion-date">Tanggal Capaian</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  id="completion-date"
+                  variant="outline"
+                  className={cn('w-full justify-start text-left font-normal', !date && 'text-muted-foreground')}
+                  disabled={submitting}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {date ? format(date, 'PPP') : 'Pilih tanggal'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={(d) => d && setDate(d)}
+                  disabled={(d) => d > new Date()}
+                  initialFocus
+                  className={cn('p-3 pointer-events-auto')}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="marked-by">Ditandai Oleh</Label>
+            <Input id="marked-by" value={adminName} disabled readOnly />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="completion-note">Catatan (opsional)</Label>
+            <Textarea
+              id="completion-note"
+              placeholder="Tambahkan konteks, bukti, atau catatan verifikasi…"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              disabled={submitting}
+              rows={3}
+            />
+          </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={onClose} disabled={submitting}>Batal</Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="bg-[hsl(45_93%_56%)] text-[hsl(150_60%_12%)] hover:bg-[hsl(45_93%_50%)] font-semibold"
+              >
+                {submitting ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Menyimpan…</>
+                ) : isEditing ? 'Perbarui Capaian' : 'Simpan Capaian'}
+              </Button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 export function AdminStudentsTab({ students, refreshData, masterGoals, categories, calculateTotalPoints }: any) {
   const [searchFilter, setSearchFilter] = useState<StudentSearchFilterValue>(emptyStudentSearchFilter);
@@ -306,6 +491,12 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
   const isAssigned = (goalId: string) => formData.assignedGoals.some(ag => ag.goalId === goalId);
   const isCompleted = (goalId: string) => formData.assignedGoals.find(ag => ag.goalId === goalId)?.completed || false;
 
+  // Audit dialog state — single or bulk
+  const [auditState, setAuditState] = useState<{
+    goalIds: string[];
+    existing: any | null;
+  } | null>(null);
+
   const toggleAssignment = (goalId: string) => {
     setFormData(prev => {
       if (isAssigned(goalId)) {
@@ -318,10 +509,59 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
 
   const toggleCompletion = (goalId: string) => {
     if (!isAssigned(goalId)) return;
+    const ag = formData.assignedGoals.find(a => a.goalId === goalId);
+    if (ag?.completed) {
+      // Open dialog in EDIT mode for an already-completed goal
+      setAuditState({
+        goalIds: [goalId],
+        existing: {
+          id: goalId,
+          completedAt: ag.completedAt,
+          completionNote: (ag as any).completionNote ?? null,
+          markedByAdminId: (ag as any).markedByAdminId ?? null,
+          markedByAdminName: (ag as any).markedByAdminName ?? null,
+        },
+      });
+    } else {
+      // First-time completion — open audit dialog
+      setAuditState({ goalIds: [goalId], existing: null });
+    }
+  };
+
+  const unmarkCompletion = (goalId: string) => {
     setFormData(prev => ({
       ...prev,
-      assignedGoals: prev.assignedGoals.map(ag => ag.goalId === goalId ? { ...ag, completed: !ag.completed, completedAt: !ag.completed ? new Date().toISOString() : undefined } : ag)
+      assignedGoals: prev.assignedGoals.map(ag => ag.goalId === goalId
+        ? { ...ag, completed: false, completedAt: undefined, completionNote: null, markedByAdminId: null, markedByAdminName: null }
+        : ag),
     }));
+  };
+
+  const handleAuditSubmit = async (payload: CompletionAuditPayload) => {
+    if (!auditState) return;
+    const ids = new Set(auditState.goalIds);
+    setFormData(prev => {
+      const existingIds = new Set(prev.assignedGoals.map(ag => ag.goalId));
+      const merged = prev.assignedGoals.map(ag => ids.has(ag.goalId) ? {
+        ...ag,
+        completed: true,
+        completedAt: payload.completedAt,
+        completionNote: payload.completionNote,
+        markedByAdminId: payload.markedByAdminId,
+        markedByAdminName: payload.markedByAdminName,
+      } : ag);
+      const additions = Array.from(ids)
+        .filter(id => !existingIds.has(id))
+        .map(id => ({
+          goalId: id,
+          completed: true,
+          completedAt: payload.completedAt,
+          completionNote: payload.completionNote,
+          markedByAdminId: payload.markedByAdminId,
+          markedByAdminName: payload.markedByAdminName,
+        }));
+      return { ...prev, assignedGoals: [...merged, ...additions] };
+    });
   };
 
   const visibleGoalIds: string[] = displayedMasterGoals.map((mg: any) => mg.id);
@@ -533,9 +773,19 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
                           onClick={() => toggleCompletion(mg.id)}
                           disabled={!assigned}
                           className={`p-2 rounded-xl transition-all ${!assigned ? 'opacity-20' : completed ? 'bg-[var(--accent)] text-[var(--accent-foreground)]' : 'bg-secondary text-muted-foreground'}`}
+                          title={completed ? 'Edit audit log' : 'Tandai selesai'}
                         >
                           <CheckCircle2 className="w-5 h-5" />
                         </button>
+                        {completed && (
+                          <button
+                            onClick={() => unmarkCompletion(mg.id)}
+                            className="p-2 rounded-xl bg-secondary text-muted-foreground hover:text-destructive transition-all"
+                            title="Batalkan selesai"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -552,6 +802,14 @@ function StudentAdminModal({ student, masterGoals, categories, onClose, onSave }
           </Button>
         </div>
       </motion.div>
+      <CompletionAuditPanel
+        isOpen={!!auditState}
+        onClose={() => setAuditState(null)}
+        studentId={formData.id || 'new'}
+        selectedGoalIds={auditState?.goalIds || []}
+        existingData={auditState?.existing || null}
+        onSubmit={handleAuditSubmit}
+      />
     </div>
   );
 }
