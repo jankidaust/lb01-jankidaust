@@ -523,5 +523,12 @@ export async function fsDeleteAll(
 ): Promise<void> {
   const db = connectFirestore(connId, config);
   const snaps = await getDocs(collection(db, table));
-  await Promise.all(snaps.docs.map((d: any) => deleteDoc(d.ref)));
+  // Phase 4: chunked writeBatch instead of N parallel deleteDoc calls.
+  const docs = snaps.docs;
+  for (let i = 0; i < docs.length; i += 450) {
+    const chunk = docs.slice(i, i + 450);
+    const batch = writeBatch(db);
+    chunk.forEach((d: any) => batch.delete(d.ref));
+    await batch.commit();
+  }
 }
