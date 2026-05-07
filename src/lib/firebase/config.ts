@@ -1,4 +1,5 @@
-import { initializeApp, getApps, getApp, type FirebaseOptions } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
+type FirebaseOptions = Record<string, any>;
 import { getAuth } from "firebase/auth";
 import {
   initializeFirestore,
