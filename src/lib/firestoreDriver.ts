@@ -25,10 +25,14 @@ import {
   doc,
   getDoc,
   getDocs,
+  getDocsFromCache,
+  getDocsFromServer,
+  getCountFromServer,
   setDoc,
   addDoc,
   updateDoc,
   deleteDoc,
+  writeBatch,
   query,
   limit as fsLimit,
 } from "firebase/firestore";
@@ -154,13 +158,17 @@ export function connectFirestore(connId: string, config: FirebaseConfig): Firest
     app = initializeApp(config, connId);
   }
   appCache.set(connId, app);
-  // Phase 3: Use the explicit DB id from config; never fall back to "(default)".
-  const databaseId = config.firestoreDatabaseId || config.databaseId || "";
+  // Phase 1: NEVER pass the literal "(default)" string. Empty/missing →
+  // omit the arg entirely so Firestore SDK targets the native default DB.
+  const rawId = config.firestoreDatabaseId || config.databaseId || "";
+  const databaseId = rawId && rawId !== "(default)" ? rawId : "";
   let db: Firestore;
   try {
-    db = initializeFirestore(app, { experimentalForceLongPolling: true }, databaseId);
+    db = databaseId
+      ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true }, databaseId)
+      : initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
   } catch {
-    db = getFirestore(app, databaseId);
+    db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
   }
   dbCache.set(connId, db);
   return db;
